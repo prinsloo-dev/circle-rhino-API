@@ -42,40 +42,45 @@ def get_data():
         # Convert the result to a list of dictionaries for JSON response
         if table == 'customers':
             result = [{'id': row[0],
-                        'company_name': row[1],
-                        'contact_person': row[2],
-                        'contact_role': row[3],
-                        'contact_tel_no': row[4],
-                        'contact_address': row[5],
-                        'contact_email': row[6]
-                        } for row in data]
+                        #'lock': row[1],
+                        'address': row[2],
+                        'tel_no': row[3],
+                        'email': row[4],
+                        'company_name': row[5],
+                        'contact_person': row[6],
+                        'contact_role': row[7]
+                       } for row in data]
         if table == 'quotes':
             result = [{'id': row[0],
-                        'customer_id': row[1],
-                        'quote_no': row[2],
-                        'quote_date': row[3],
-                        'total_price': row[4],
-                        'fitment_address': row[5],
-                        'fitment_date': row[6],
-                        'completion_date': row[7],
+                        #'lock': row[1],
+                        'quote_date': row[2],
+                        'fitment_date': row[3],
+                        'completion_date': row[4],
+                        'total_price': row[5],
+                        'customer_id': row[6],
+                        'quote_no': row[7],
                         'status': row[8],
-                        'status_reason': row[9]
+                        'fitment_address': row[9],
+                        'status_reason': row[10]
                         } for row in data]
         if table == 'qoute_lines':
             result = [{'id': row[0],
-                        'quotes_id': row[1],
-                        'products_id': row[2],
-                        'description': row[3],
-                        'name': row[4],
-                        'size': row[5],
-                        'price': row[6],
-                        'quantity': row[7],
-                        'status': row[8]} for row in data]
+                        #'lock': row[1],
+                        'price': row[2],
+                        'quotes_id': row[3],
+                        'products_id': row[4],
+                        'status': row[5],
+                        'name': row[6],
+                        'description': row[7],
+                        'size': row[8],
+                        'quantity': row[9]
+                        } for row in data]
         if table == 'jobs':
             result = [{'id': row[0],
-                        'quote_lines_id': row[1],
-                        'job_no': row[2],
-                        'job_date': row[3],
+                        #'lock': row[1],
+                        'job_date': row[2],
+                        'quote_lines_id': row[3],
+                        'job_no': row[4]
                         } for row in data]
         if table == 'departments':
             result = [{'id': row[0],
@@ -84,35 +89,39 @@ def get_data():
                         } for row in data]
         if table == 'jobs_history':
             result = [{'id': row[0],
-                        'jobs_id': row[1], 
-                        'departments_id': row[2],
-                        'action_employees_id': row[3],
-                        'owner_employees_id': row[4],
-                        'action_date': row[5],
-                        'payment': row[6],
-                        'comment': row[7],
-                        'status': row[8]
+                        #'lock': row[1], 
+                        'action_date': row[2],
+                        'jobs_id': row[3], 
+                        'departments_id': row[4],
+                        'action_employees_id': row[5],
+                        'owner_employees_id': row[6],
+                        'status': row[7],
+                        'payment': row[8],
+                        'comment': row[9]
                        } for row in data]
         if table == 'employees':
             result = [{'id': row[0],
-                        'name': row[1],
-                        'surname': row[2],
-                        'employee_no': row[3],
-                        'departments_id': row[4],
-                        'sa_id_number': row[5],
-                        'tel_no': row[6],
-                        'home_address': row[7],
-                        'email': row[8],
-                        'appointment_date': row[9],
-                        'termination_date': row[10]
+                       #'lock': row[1],
+                        'appointment_date': row[2],
+                        'termination_date': row[3],
+                        'home_address': row[4],
+                        'tel_no': row[5],
+                        'email': row[6],
+                        'name': row[7],
+                        'surname': row[8],
+                        'departments_id': row[9],
+                        'employee_no': row[10],
+                        'sa_id_number': row[11],
                         } for row in data]
         if table == 'products':
             result = [{'id': row[0],
-                       'description': row[1], 
-                       'item_name': row[2],
-                       'price': row[3]
+                       #'lock': row[1],
+                       'price': row[2],
+                       'item_name': row[3],
+                       'description': row[4], 
                        } for row in data]
         # add if statements for other tables
+        
         return jsonify(result)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
