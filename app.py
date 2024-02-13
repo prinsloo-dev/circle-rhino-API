@@ -21,7 +21,7 @@ def connect_db():
     return connection
  
 # Route to get query data (GET - read). UI sent payload: (table name)
-@app.route('/query', methods=['GET'])
+@app.route('/query', methods=['POST'])
 def get_data():
     try:
         thedata = request.json
