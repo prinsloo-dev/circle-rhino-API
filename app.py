@@ -3,9 +3,11 @@
 
 from flask import Flask, jsonify, request
 import psycopg2
- 
+from flask_cors import CORS
+
 app = Flask(__name__)
- 
+CORS(app)
+
 # Database connection parameters
 db_params = {
     'host': 'localhost',
@@ -39,7 +41,7 @@ def get_data():
         # Close the cursor and connection
         cursor.close()
         connection.close()
-        # Convert the result to a list of dictionaries for JSON response
+        # Convert the result to a list of dictionaries for JSON response. send headers to match column headers
         if table == 'customers':
             result = [{'id': row[0],
                         #'lock': row[1],
@@ -84,8 +86,8 @@ def get_data():
                         } for row in data]
         if table == 'departments':
             result = [{'id': row[0],
-                        'name': row[1],
-                        'entity_name': row[2]
+                        'Department': row[1],
+                        'Entity': row[2]
                         } for row in data]
         if table == 'jobs_history':
             result = [{'id': row[0],
@@ -170,6 +172,7 @@ def save_data():
     try:
         # Get data from the request (assuming a JSON payload)
         thedata = request.json
+        print(thedata)
         mysetdata = ''
         for item in thedata.keys():
             if item == 'table': # first itteration
@@ -179,7 +182,7 @@ def save_data():
             else:
                 mysetdata = mysetdata + item + "='" + thedata[item] + "', "
         mysetdata = (mysetdata + 'lock=false')
-
+        print(mysetdata)
         # Connect to the database
         connection = connect_db()
         # Create a cursor
