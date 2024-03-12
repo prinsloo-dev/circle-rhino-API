@@ -1,5 +1,9 @@
 # ensure that docker container jmsdb is running to be able to access the postgress database
 # Running this app will start the flask server
+# This API will qeury, add, save and delete data from the database.
+# The query routine will return data in json format using the exact column name in the
+# database, excluding the lock column. Its up to the UI to change the order of data and to
+# decide which columns to use.
 
 from flask import Flask, jsonify, request
 import psycopg2
@@ -22,118 +26,84 @@ def connect_db():
     connection = psycopg2.connect(**db_params)
     return connection
  
-# Route to get query data (GET - read). UI sent payload: (table name)
+# Route to get query data (GET - read). UI sent payload: (fieldnames, fieldaliases, joinfields)
 @app.route('/query', methods=['POST'])
 def get_data():
-    try:
-        thedata = request.json
-        for item in thedata.keys():
-            if item == 'table': # first itteration
-                table = thedata[item]
-        # Connect to the database
-        connection = connect_db()
-        # Create a cursor
-        cursor = connection.cursor()
-        # Execute a query
-        cursor.execute(f"""SELECT * FROM {table} WHERE lock=false ORDER BY id ASC""")
-        # Fetch all rows
-        data = cursor.fetchall()
-        # Close the cursor and connection
-        cursor.close()
-        connection.close()
-        # Convert the result to a list of dictionaries for JSON response. send headers to match column headers
-        if table == 'customers':
-            result = [{'id': row[0],
-                        #'lock': row[1],
-                        'address': row[2],
-                        'tel_no': row[3],
-                        'email': row[4],
-                        'company_name': row[5],
-                        'contact_person': row[6],
-                        'contact_role': row[7]
-                       } for row in data]
-        if table == 'quotes':
-            result = [{'id': row[0],
-                        #'lock': row[1],
-                        'quote_date': row[2],
-                        'fitment_date': row[3],
-                        'completion_date': row[4],
-                        'total_price': row[5],
-                        'customer_id': row[6],
-                        'quote_no': row[7],
-                        'status': row[8],
-                        'fitment_address': row[9],
-                        'status_reason': row[10]
-                        } for row in data]
-        if table == 'qoute_lines':
-            result = [{'id': row[0],
-                        #'lock': row[1],
-                        'price': row[2],
-                        'quotes_id': row[3],
-                        'products_id': row[4],
-                        'status': row[5],
-                        'name': row[6],
-                        'description': row[7],
-                        'size': row[8],
-                        'quantity': row[9]
-                        } for row in data]
-        if table == 'jobs':
-            result = [{'id': row[0],
-                        #'lock': row[1],
-                        'job_date': row[2],
-                        'quote_lines_id': row[3],
-                        'job_no': row[4]
-                        } for row in data]
-        if table == 'departments':
-            result = [{'id': row[0],
-                        'Department': row[1],
-                        'Entity': row[2]
-                        } for row in data]
-        if table == 'jobs_history':
-            result = [{'id': row[0],
-                        #'lock': row[1], 
-                        'action_date': row[2],
-                        'jobs_id': row[3], 
-                        'departments_id': row[4],
-                        'action_employees_id': row[5],
-                        'owner_employees_id': row[6],
-                        'status': row[7],
-                        'payment': row[8],
-                        'comment': row[9]
-                       } for row in data]
-        if table == 'employees':
-            result = [{'id': row[0],
-                       #'lock': row[1],
-                        'appointment_date': row[2],
-                        'termination_date': row[3],
-                        'home_address': row[4],
-                        'tel_no': row[5],
-                        'email': row[6],
-                        'name': row[7],
-                        'surname': row[8],
-                        'departments_id': row[9],
-                        'employee_no': row[10],
-                        'sa_id_number': row[11],
-                        } for row in data]
-        if table == 'products':
-            result = [{'id': row[0],
-                       #'lock': row[1],
-                       'price': row[2],
-                       'item_name': row[3],
-                       'description': row[4], 
-                       } for row in data]
-        # add if statements for other tables
-        
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    #try:
+    thedata = request.json
+    #print(thedata)
+    # construct the query command
+    fldnames = '' # contains the fields to return (SELECT)
+    maintable = '' # main table with fields (FROM)
+    joincode = '' # the code used to join fields (JOIN jt1 ON pk1=fk1 JOIN jt2 ON pk2=fk2 ....)
+    filtercode = '' # how the selection is filtered (WHERE)
+    for item in thedata.keys():
+        if item == 'fieldnames': # field names to query
+            for index, fldn in enumerate(thedata['fieldnames']):
+
+
+                # print(index, fldn, thedata['fieldaliases'][index])
+                myfield = fldn + ' as ' + thedata['fieldaliases'][index] + ', '
+                fldnames = fldnames + myfield
+                if maintable == '':
+                    maintable = myfield.split('.')[0]
+                    if "(" in maintable:
+                        posit = maintable.find('(')
+                        maintable = maintable[posit+1:]
+
+                # else:
+                #     if jointable == '' and myfield.split('.')[0] != maintable:
+                #         jointable = myfield.split('.')[0]
+        if item == 'joinfields': # tables and fields to do join
+            for join in thedata[item]: # itterate through join list
+                joincode = joincode + ' LEFT JOIN ' + join['jointable'] + ' ON ' +  join['primarykey'] + '=' + join['foreinkey']
+        if item == 'filterfields':
+            for fltr in thedata[item]:
+                filtercode = filtercode + ' ' + fltr['field'] + '=' + f"""'{fltr['value']}'""" + ' AND'
+    filtercode = filtercode + ' ' + maintable + '.lock=false'
+    # remove end ', ' and ' = '
+    fldnames = fldnames[:-2]
+    # print("fieldnames:", fldnames)
+    querycode = 'SELECT ' + fldnames + ' FROM ' + maintable
+    print('filter code: ', filtercode)
+    if len(joincode) > 0:
+        querycode = querycode + joincode
+    querycode = querycode + ' WHERE' + filtercode
+    print('query command: ', querycode)     
+    # Connect to the database
+    connection = connect_db()
+    # Create a cursor
+    cursor = connection.cursor()
+    # Execute a query
+    cursor.execute(f"""{querycode} ORDER BY id ASC""")
+    # Fetch all rows
+    data = cursor.fetchall()
+    colnames = [desc[0] for desc in cursor.description]
+    #print(colnames)
+    #print(data)
+    # Close the cursor and connection
+
+    cursor.close()
+    connection.close()
+    result = []
+    for row in data:
+        myrow = {}
+        for index, coln in enumerate(colnames):
+            myrow[coln] = row[index]
+        result.append(myrow)
+
+    return jsonify(result)
+    # except Exception as e:
+    #     return jsonify({'error': str(e)}), 500
     
 # Route to add new record (POST - create). UI sent payload: (table name, datafield1, datafield2, ...) (no id field)
 @app.route('/add', methods=['POST'])
 def add_data():
+    #print("add data engaged...")
     try:
         # Get data from the request (assuming a JSON payload)
         thedata = request.json
+        #print('add data called for table', thedata)
         mykeys = ''
         mydata = ''
         for item in thedata.keys():
@@ -144,17 +114,25 @@ def add_data():
                 mydata = mydata + "'" + thedata[item] + "', "
         mykeys = (mykeys + 'lock')
         mydata = (mydata + 'false')
-
+        #print(table)
+        #print(mykeys)
+        #print(mydata)
         # Connect to the database
         connection = connect_db()
         # Create a cursor
         cursor = connection.cursor()
+        # first check if the id counter exist
+        # cursor.execute(f"""SELECT * FROM {table}""")
+        # data = cursor.fetchall()
+        # print(len(data))
+        # if len(data) == 0:
+        #     print('sequence not created, thus create first')
         # Execute a query
+        print("adding to db command:",'INSERT INTO', table, '(', mykeys, ') VALUES (', mydata, ')')
         cursor.execute(
             f"""
             INSERT INTO {table} ({mykeys})
-            VALUES
-            ({mydata});
+            VALUES ({mydata});
             """
         )
         connection.commit()
@@ -172,34 +150,35 @@ def save_data():
     try:
         # Get data from the request (assuming a JSON payload)
         thedata = request.json
-        print(thedata)
         mysetdata = ''
+        print(thedata)
         for item in thedata.keys():
-            if item == 'table': # first itteration
+            if item == 'table':
                 table = thedata[item]
             elif item == 'id':
                 myid = thedata[item]
             else:
                 mysetdata = mysetdata + item + "='" + thedata[item] + "', "
         mysetdata = (mysetdata + 'lock=false')
-        print(mysetdata)
+        
+
         # Connect to the database
         connection = connect_db()
         # Create a cursor
         cursor = connection.cursor()
         # Execute a query
+        print('save command: UPDATE', table, ' SET ', mysetdata, 'WHERE id=', myid)
         cursor.execute(
             f"""
                 UPDATE {table}
                 SET {mysetdata}
-                where id={myid}
+                WHERE id={myid}
             """
         )
         connection.commit()
         # Close the cursor and connection
         cursor.close()
         connection.close()
-        # return "success"
         return jsonify({'message': 'record saved successfully'}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -211,11 +190,8 @@ def delete_data():
     try:
         # Get data from the request (assuming a JSON payload)
         thedata = request.json
-        for item in thedata.keys():
-            if item == 'table': # first itteration
-                table = thedata[item]
-            if item == 'id':
-                myid = thedata[item]
+        table = thedata['table']
+        myid = thedata['id']
         # Connect to the database
         connection = connect_db()
         # Create a cursor
