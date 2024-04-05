@@ -10,9 +10,8 @@ from flask import Flask, jsonify, request
 import psycopg2
 from flask_cors import CORS
 from PyPDF2 import PdfFileWriter, PdfFileReader, PdfFileMerger
-from os import startfile, remove, path
+from os import remove, path, startfile
 from reportlab.pdfgen import canvas
-from pprint import pprint
 import textwrap
 import math
 import time
@@ -207,7 +206,7 @@ def delete_data():
 #   and id: is the records id
 @app.route('/print', methods=['POST'])
 def print_record():
-    # creates a pdf for the user to print or send
+     # creates a pdf for the user to print or send
     global totalamount
     try:
         thedata = request.json
@@ -272,7 +271,14 @@ def print_record():
                 remove(filename)
         fullfilename = path.abspath(finfile)
         time.sleep(2)
-        return jsonify(fullfilename), 200
+        window_title = finfile.split('/')[1]
+        print("opening file:", window_title)
+        try:
+            startfile(fullfilename)
+            returnstring = window_title + " file opened successfully"
+        except:
+            returnstring = "failed to open " + window_title
+        return jsonify(returnstring), 200
         #return jsonify({'message': 'print successfully'}), 200
     except Exception as e:
           traceback.print_exc(e.__context__)
