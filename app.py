@@ -10,11 +10,12 @@ from flask import Flask, jsonify, request
 import psycopg2
 from flask_cors import CORS
 from PyPDF2 import PdfFileWriter, PdfFileReader, PdfFileMerger
-from os import remove, path, startfile
+from os import remove, path, startfile, getcwd, makedirs
 from reportlab.pdfgen import canvas
 import textwrap
 import math
 import time
+import openpyxl
 
 totalamount = 0
 
@@ -108,7 +109,9 @@ def add_data():
             else:
                 if thedata[item] != None: # do not attempt to add fields with type none/null
                     mykeys = mykeys + item + ', '
-                    mydata = mydata + "'" + thedata[item] + "', "
+                    dataitem = thedata[item].replace("'", '`')
+                    dataitem = dataitem.replace("\\", '')
+                    mydata = mydata + "'" + dataitem + "', "
         mykeys = (mykeys + 'lock')
         mydata = (mydata + 'false')
         
@@ -147,7 +150,9 @@ def save_data():
             elif item == 'id':
                 myid = thedata[item]
             else:
-                mysetdata = mysetdata + item + "='" + thedata[item] + "', "
+                dataitem = thedata[item].replace("'", '`')
+                dataitem = dataitem.replace("\\", '')
+                mysetdata = mysetdata + item + "='" + dataitem + "', "
         mysetdata = (mysetdata + 'lock=false')
         
 
@@ -269,6 +274,7 @@ def print_record():
             # delete page files
             for filename in mypages:
                 remove(filename)
+        
         fullfilename = path.abspath(finfile)
         time.sleep(2)
         window_title = finfile.split('/')[1]
@@ -284,6 +290,184 @@ def print_record():
           traceback.print_exc(e.__context__)
           return jsonify({'error': str(e)}), 500
    
+# Route to export a table. UI sent payload: (table name)
+@app.route('/export', methods=['PATCH'])
+def export_data():
+    try:
+        thedata = request.json
+        #print('data received:', thedata)
+        table = thedata['table']
+        querycode = 'SELECT * FROM ' + table  + " WHERE lock=false ORDER BY id"
+        print('exporting data query code:', querycode)
+        connection = connect_db() # Connect to the database
+        cursor = connection.cursor() # Create a cursor
+        cursor.execute(f"""{querycode}""") # Execute a query
+        data = cursor.fetchall() # Fetch all rows
+        colnames = [desc[0] for desc in cursor.description]
+        cursor.close()# Close the cursor and connection
+        connection.close()
+        # create excel file and export data
+        try:
+            workbook = openpyxl.Workbook()
+            sheet = workbook.active
+            # add header row
+            headlist = []
+            for coln in colnames:
+                if coln != 'lock':
+                    headlist.append(coln)
+            sheet.append(headlist)
+            # add data rows
+            for row in data:
+                myrow = []
+                for index, coln in enumerate(colnames):
+                    if coln != 'lock':
+                        myrow.append(row[index])
+                sheet.append(myrow)
+            # Save the workbook to a file
+            currentfolder = getcwd() + '\\xldata'
+            # create folder if not exist
+            isExist = path.exists(currentfolder)
+            #print('does path exist:', isExist)
+            if not isExist:
+                makedirs(currentfolder)
+            xlfilename = currentfolder + '\\' + table + '.xlsx'
+            #print(xlfilename)
+            workbook.save(xlfilename)
+            returnmessage = 'Success! Data exported succesfully to file ' + xlfilename
+        except:
+            returnmessage = 'Error! Could not create export file: ' + xlfilename
+        return jsonify({'message': returnmessage}), 200
+    except Exception as e:
+        traceback.print_exc(e.__context__)
+        return jsonify({'error': str(e)}), 500
+
+# Route to import a table. UI sent payload: (table name)
+@app.route('/import', methods=['PATCH'])
+def import_data():
+    try:
+        thedata = request.json
+        table = thedata['table']
+        # extract data from file
+        currentfolder = getcwd() + '\\xldata'
+        xlfilename = currentfolder + '\\' + table + '.xlsx'
+        returnmessage = 'Success! Data imported succesfully from file ' + xlfilename # this message will change if errors occur
+        isExist = path.exists(xlfilename)
+        if not isExist:
+            returnmessage = 'Error! Could not find file to import: ' + xlfilename
+        else: # file exist
+            try: # retrieve data from file
+                workbook = openpyxl.load_workbook(xlfilename)
+                sheet = workbook.active
+                mysetfields = ''
+                headerow = ''
+                mykeys = ''
+                for i in range(1,sheet.max_column+1):
+                    colname = sheet.cell(row=1,column=i).value
+                    headerow = headerow + colname + ', '
+                    mysetfields = mysetfields + colname + '=' +  'newdata.' + colname + ', '
+                    if colname != 'id':
+                        mykeys = mykeys + colname + ', '
+                headerow = headerow[:-2]
+                mysetfields = mysetfields[:-2]
+                mykeys = mykeys + 'lock'
+                mysetdata = '('
+                mydata = '('
+                newcount = 0
+                for myrow in range(2, sheet.max_row+1): # itterate through rows
+                    for i in range(1,sheet.max_column+1): # itterate through columns
+                        myvalue = str(sheet.cell(row=myrow,column=i).value).replace("'", '`')
+                        myvalue = myvalue.replace("\\", '')
+                        #print(myvalue)
+                        if i == 1: # the id
+                            theid = myvalue
+                        if theid == 'None': # add to new record list
+                            if i != 1: # dont add id
+                                if myvalue.replace('.','').replace('-','').isnumeric(): # numeric data
+                                    mydata = mydata + myvalue + ", "
+                                else:
+                                    mydata = mydata + "'" + myvalue + "', "
+                        else: # add to save list
+                            if myvalue.replace('.','').replace('-','').isnumeric(): # numeric data
+                                mysetdata = mysetdata + myvalue + ", "
+                            else:
+                                mysetdata = mysetdata + "'" + myvalue + "', "
+                    if theid == 'None': # add to new record list
+                        mydata = mydata + 'false), ('
+                        newcount = newcount + 1
+                    else: # add to existing records to update
+                        mysetdata = mysetdata[:-2] + '), ('
+                mysetdata = mysetdata[:-3]
+                mydata = mydata[:-3]
+                # remove any fields that contains a value of 'None'
+                mysetdata = mysetdata.replace("'None'", 'NULL')
+                mydata = mydata.replace("'None'", 'NULL')
+
+                # data extracted so store to db
+                connection = connect_db() # Connect to the database
+                cursor = connection.cursor() # Create a cursor
+                try: # save existing records
+                    print('SAVE command: UPDATE ' + table + ' AS mytable \nSET ' + mysetfields +
+                            '\nFROM (VALUES ' + mysetdata + ') AS newdata(' + headerow +
+                            ') \nWHERE newdata.id=mytable.id')
+                    if len(mysetdata) > 0:
+                        cursor.execute(
+                            f"""
+                                UPDATE {table} AS mytable
+                                SET {mysetfields}
+                                FROM (VALUES {mysetdata}) AS newdata({headerow})
+                                WHERE newdata.id = mytable.id
+                            """)
+                        connection.commit()
+                except:
+                    returnmessage = 'Error! Existing data could not be updated in table ' + table
+                try: # add new records
+                    print("INSERT command:\n" +
+                        '    INSERT INTO ' + table + ' ('+ mykeys + ')\n' +
+                        '    VALUES '+ mydata + '\n')
+                    if len(mydata) > 0:
+                        cursor.execute(
+                            f"""
+                            INSERT INTO {table} ({mykeys})
+                            VALUES {mydata}
+                            """
+                        )
+                        connection.commit()
+                except:
+                    returnmessage = 'Error! New data could not be added to table ' + table
+                # Close the cursor and connection
+                cursor.close()
+                connection.close()
+            except:
+                returnmessage = 'Error! Data could not be extracted from file ' + xlfilename
+        return jsonify({'message': returnmessage}), 200
+    except Exception as e:
+        traceback.print_exc(e.__context__)
+        return jsonify({'error': str(e)}), 500
+
+
+# execute postgress commands as is in payload
+@app.route('/action', methods=['PATCH'])
+def action_data():
+    # only changing lock to true
+    try:
+        # Get data from the request (assuming a JSON payload)
+        thedata = request.json
+        actioncode = thedata['query']
+        # Connect to the database
+        connection = connect_db()
+        # Create a cursor
+        cursor = connection.cursor()
+        # Execute a query
+        print('action code:', actioncode)
+        cursor.execute(f"""{actioncode}""")
+        connection.commit()
+        # Close the cursor and connection
+        cursor.close()
+        connection.close()
+        return jsonify({'message': 'action executed successfully'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    
 
 def mergepdfs(template, outputfile): # where template is the template and filename is the outputfile
     finalout = PdfFileWriter()
@@ -314,6 +498,7 @@ def createpage(pgtype, pgheader, pgdata, pgno, totpges): # creates a pdf page co
     mytempl = "pdfs/templates/" + pgtype
     c = canvas.Canvas("pdfs/overlay.pdf")
     c.setLineWidth(0.5)
+    c.setFont('Times-Bold', 10)
 
     if pgtype == "jmsquotep1.pdf" or pgtype == "jmsquotep2.pdf": # 1st page of the quote
         filename = "pdfs/quote_" + str(pgheader[0][0]).zfill(6) + "_" + str(pgno) + ".pdf"
@@ -334,12 +519,13 @@ def createpage(pgtype, pgheader, pgdata, pgno, totpges): # creates a pdf page co
             else:
                 c.drawString(corx,cory,str(item))
         # create quote lines
-        posqty = 23
-        posdescr = 34.4
-        posprice = 151
-        postotprice = 171
-        posline = 75
-        lineheight = 6.0 # in mm
+        posqty = 23 # qty x poaition
+        posdescr = 34.4 # description x poaition
+        posprice = 151 # price per x poaition
+        postotprice = 171 # total price x poaition
+        posline = 75 # divider lines x poaition
+        lineheight = 5.6 # in mm
+        deschars = 50 # the number of characters allowed in the description
         for quoteline in pgdata: # itterate through quotelines
             for i, item in enumerate(quoteline): # iterate trough items in quoteline
                 cory =  (297 - posline) * mm # converted to canvas points
@@ -348,7 +534,7 @@ def createpage(pgtype, pgheader, pgdata, pgno, totpges): # creates a pdf page co
                     c.drawString(corx,cory,str(item))
                 if i == 2: # description
                     corx =  posdescr * mm  # converted to canvas points
-                    descrfull = textwrap.wrap(str(quoteline[i-1]) + ': ' + str(item), 56)
+                    descrfull = textwrap.wrap(str(quoteline[i-1]) + ': ' + str(item), deschars)
                     nextline = posline
                     for phrase in descrfull:
                         cory =  (297 - nextline) * mm # converted to canvas points
