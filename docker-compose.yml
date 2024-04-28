@@ -1,0 +1,84 @@
+version: '3.5'
+
+networks:
+  jms-network:
+    name: jms_default
+
+volumes:
+  postgres_data:
+  alembic_config:
+
+services:
+
+  ## --------- postgres -------------- ##
+  circle-rhino-postgres:
+    image: postgres:13
+    container_name: circle-rhino-postgres
+    restart: always
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8
+    ports:
+      - 5430:5432
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50M"
+        max-file: "10"
+    networks:
+      - jms-network
+
+  circle-rhino-api: 
+    build:
+      context: ./
+      # args:
+      #   - SSH_PRIVATE_KEY=${SSH_PRIVATE_KEY:?err}
+    container_name: circle-rhino-api
+    image: circle-rhino-api:0.0.1
+    restart: always
+    # env_file:
+    #   - .env.docker
+    volumes:
+      - ./src:/src
+    depends_on:
+      - circle-rhino-postgres
+    networks:
+      - jms-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50M"
+        max-file: "10"
+    ports:
+      - "5000:5000"
+    # entrypoint:
+    #   - flask
+    #   - run
+    #   - --host=0.0.0.0
+    #   - --port=5000
+
+  migrations:
+    restart: "no"
+    image: circle-rhino-api:0.0.1
+    # env_file:
+    #   - .env.docker
+    # volumes:
+    #   - ./src:/src:cached
+    #   - alembic_config:/src/alembic.ini
+    environment:
+      WAIT_HOSTS: circle-rhino-postgres:5430
+    # command: sh -c "/wait && alembic upgrade head"
+    command: sh -c "alembic upgrade head"
+    depends_on:
+      - circle-rhino-api
+      - circle-rhino-postgres
+    networks:
+      - jms-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50M"
+        max-file: "10"

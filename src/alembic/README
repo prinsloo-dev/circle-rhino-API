@@ -1,0 +1,27 @@
+Generic single-database configuration.
+
+###Create Migrations
+
+example:
+
+`alembic revision -m "create account table"`
+
+example auto generate:
+
+`alembic revision --autogenerate -m "create table x"`
+
+###Upgrade and Downgrade Migrations
+Apply migrations:
+`alembic upgrade head`
+
+Rollback 1 migration:
+`alembic downgrade -1`
+
+More info on running migrations:
+https://alembic.sqlalchemy.org/en/latest/tutorial.html
+
+    op.execute(
+        """
+        
+        """
+    )
