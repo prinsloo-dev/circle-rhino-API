@@ -10,7 +10,8 @@ from flask import Flask, jsonify, request
 import psycopg2
 from flask_cors import CORS
 from PyPDF2 import PdfFileWriter, PdfFileReader, PdfFileMerger
-from os import remove, path, startfile, getcwd, makedirs
+# from os import remove, path, startfile, getcwd, makedirs
+import os
 from reportlab.pdfgen import canvas
 import textwrap
 import math
@@ -30,18 +31,36 @@ CORS(app)
 
 # Database connection parameters
 db_params = {
-    'host': 'localhost',
+    'host': 'circle-rhino-postgres',
+    # 'host': 'localhost',
     'dbname': 'jmsdb',
     'user': 'postgres',
     'password': 'postgres',
-    'port': '5430'
+    'port': '5432'
+    # 'port': '5430'
 }
   
 # Function to connect to the database
 def connect_db():
     connection = psycopg2.connect(**db_params)
     return connection
- 
+
+@app.route('/hw', methods=['PATCH'])
+def hello_world():
+    print("HW endpoit was hit")
+    try:
+        connection = connect_db()
+        cursor = connection.cursor()
+        cursor.execute("""
+        SELECT * FROM public.alembic_version
+        """)
+        alembic_version = cursor.fetchall()
+        connection.close()
+        return jsonify({'message': 'Hello World '}), 200
+    except Exception as e:
+          traceback.print_exc(e.__context__)
+          return jsonify({'error': str(e)}), 500
+
 # Route to get query data (GET - read). UI sent payload: (fieldnames, fieldaliases, joinfields)
 @app.route('/query', methods=['POST'])
 def get_data():
